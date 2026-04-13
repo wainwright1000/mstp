@@ -170,9 +170,7 @@ def generate_diagram(output_path='figures/bifurcation_rho.png', mu_value=0.54):
     
     ax.set_xlabel(r'$\rho$', fontsize=13)
     ax.set_ylabel('Equilibria', fontsize=13)
-    title_mu = params['mu']
-    ax.set_title(r'Equilibrium points for $f_2(\mu=' + f'{title_mu}' + r', x, \beta=14, W_1=-0.6, W_2=0.3, \rho)$', 
-                 fontsize=14)
+    ax.set_title(r'Bifurcation diagram of $f_2(x)$ varying $\rho$', fontsize=16)
     ax.set_xlim(param_range)
     ax.set_ylim(0, 1)
     ax.tick_params(axis='both', labelsize=12)
@@ -186,7 +184,7 @@ def generate_diagram(output_path='figures/bifurcation_rho.png', mu_value=0.54):
         Line2D([0], [0], color='black', marker='x', markersize=10, markeredgewidth=1.5,
                linestyle='None', label='class II social tipping points')
     ]
-    ax.legend(handles=legend_elements, loc='upper right', fontsize=11, framealpha=0.9)
+    ax.legend(handles=legend_elements, loc='upper right', fontsize=14, framealpha=0.9)
     
     ax.grid(True, alpha=0.3)
     plt.tight_layout()

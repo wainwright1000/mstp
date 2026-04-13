@@ -118,7 +118,7 @@ def generate_diagram(output_path='figures/bifurcation_beta.png', mu_value=0.54):
     """Generate bifurcation diagram for varying β."""
     params = DEFAULT_PARAMS.copy()
     params['mu'] = mu_value
-    param_range = (0.001, 25)
+    param_range = (0, 14)
     n_points = 1000
     n_guess = 200
     
@@ -159,14 +159,12 @@ def generate_diagram(output_path='figures/bifurcation_beta.png', mu_value=0.54):
     
     ax.set_xlabel(r'$\beta$', fontsize=13)
     ax.set_ylabel('Equilibria', fontsize=13)
-    title_mu = params['mu']
-    ax.set_title(r'Equilibrium points for $f_2(\mu=' + f'{title_mu}' + r', x, \beta, W_1=-0.6, W_2=0.3, \rho=1)$', 
-                 fontsize=14)
+    ax.set_title(r'Bifurcation diagram of $f_2(x)$ varying $\beta$', fontsize=16)
     ax.set_xlim(param_range)
     ax.set_ylim(0, 1)
     ax.tick_params(axis='both', labelsize=12)
     
-    ax.set_xticks(np.arange(0, 26, 5))
+    ax.set_xticks(np.arange(0, 15, 2))
     ax.set_yticks(np.arange(0, 1.01, 0.25))
     
     legend_elements = [
@@ -175,7 +173,7 @@ def generate_diagram(output_path='figures/bifurcation_beta.png', mu_value=0.54):
         Line2D([0], [0], color='black', marker='x', markersize=10, markeredgewidth=1.5,
                linestyle='None', label='class II social tipping points')
     ]
-    ax.legend(handles=legend_elements, loc='upper right', fontsize=11, framealpha=0.9)
+    ax.legend(handles=legend_elements, loc='upper right', fontsize=14, framealpha=0.9)
     
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
