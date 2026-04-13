@@ -6,7 +6,7 @@ Parameters: β=14, ρ=1, W₁=-0.6, W₂=0.3
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import brentq
+from scipy.optimize import brentq, minimize_scalar
 from pathlib import Path
 from matplotlib.lines import Line2D
 
@@ -48,6 +48,19 @@ def response_derivative(x, mu, beta, rho, W1, W2):
     return d1 + d2
 
 
+def calculate_B(x, mu, beta, rho, W1, W2):
+    """
+    Calculate B(x) = mu*Y1 + (1-mu)*Y2 where Yj = Zj/(1+Zj)^2
+    and Zj = exp(beta*(Wj + rho*(1-2x))).
+    """
+    mu2 = 1 - mu
+    Z1 = np.exp(beta * (W1 + rho * (1 - 2*x)))
+    Z2 = np.exp(beta * (W2 + rho * (1 - 2*x)))
+    Y1 = Z1 / (1 + Z1)**2
+    Y2 = Z2 / (1 + Z2)**2
+    return mu * Y1 + mu2 * Y2
+
+
 def find_fixed_points(mu, beta, rho, W1, W2, n_guess=200):
     """Find all fixed points in [0, 1] by scanning for sign changes."""
     x_grid = np.linspace(0, 1, n_guess)
@@ -55,8 +68,6 @@ def find_fixed_points(mu, beta, rho, W1, W2, n_guess=200):
     
     fixed_points = []
     for i in range(len(x_grid) - 1):
-        # Detect sign change OR boundary root (where g(x) = 0 at endpoint)
-        # Using <= catches roots at grid boundaries like x=1 where g(1)=0
         if g_values[i] * g_values[i+1] <= 0:
             try:
                 root = brentq(fixed_point_equation, x_grid[i], x_grid[i+1],
@@ -70,66 +81,6 @@ def find_fixed_points(mu, beta, rho, W1, W2, n_guess=200):
     return sorted(fixed_points, key=lambda x: x[0])
 
 
-def find_turning_points(param_values, all_fixed_points, tolerance=0.08):
-    """
-    Find turning points by tracking branches across parameter values.
-    A turning point (class II STP) occurs when a fixed point has no
-    continuation at the next parameter value - i.e., the branch ends.
-    
-    Parameters
-    ----------
-    param_values : array
-        Array of parameter values
-    all_fixed_points : list of lists
-        List of fixed points at each parameter value
-    tolerance : float
-        Maximum distance in x to consider two points as the same branch
-    
-    Returns
-    -------
-    list of tuples
-        (param_value, fixed_point) for each turning point
-    """
-    turning_points = []
-    
-    for i in range(len(param_values) - 1):
-        p_curr = param_values[i]
-        p_next = param_values[i + 1]
-        fps_curr = all_fixed_points[i]
-        fps_next = all_fixed_points[i + 1]
-        
-        # Check which branches end at this step (present at i, absent at i+1)
-        for fp_curr, _ in fps_curr:
-            has_continuation = False
-            for fp_next, _ in fps_next:
-                if abs(fp_curr - fp_next) < tolerance:
-                    has_continuation = True
-                    break
-            if not has_continuation:
-                # This branch ended here
-                turning_points.append((p_curr, fp_curr))
-        
-        # Check which branches start at this step (absent at i, present at i+1)
-        for fp_next, _ in fps_next:
-            has_origin = False
-            for fp_curr, _ in fps_curr:
-                if abs(fp_curr - fp_next) < tolerance:
-                    has_origin = True
-                    break
-            if not has_origin:
-                # This branch started here
-                turning_points.append((p_next, fp_next))
-    
-    # Remove duplicates (within small parameter tolerance)
-    unique_turning = []
-    for tp in turning_points:
-        if not any(abs(tp[0] - utp[0]) < 0.05 and abs(tp[1] - utp[1]) < 0.05 
-                   for utp in unique_turning):
-            unique_turning.append(tp)
-    
-    return unique_turning
-
-
 def generate_diagram(output_path='figures/bifurcation_mu.png'):
     """Generate bifurcation diagram for varying μ."""
     params = DEFAULT_PARAMS.copy()
@@ -141,13 +92,11 @@ def generate_diagram(output_path='figures/bifurcation_mu.png'):
     
     stable_x, stable_y = [], []
     unstable_x, unstable_y = [], []
-    all_fixed_points = []
     
     for p_val in param_values:
         p = params.copy()
         p['mu'] = p_val
         fps = find_fixed_points(**p, n_guess=n_guess)
-        all_fixed_points.append(fps)
         for fp, is_stable in fps:
             if is_stable:
                 stable_x.append(p_val)
@@ -156,57 +105,56 @@ def generate_diagram(output_path='figures/bifurcation_mu.png'):
                 unstable_x.append(p_val)
                 unstable_y.append(fp)
     
-    # Find turning points
-    turning_points = find_turning_points(param_values, all_fixed_points)
-    turning_x = [tp[0] for tp in turning_points]
-    turning_y = [tp[1] for tp in turning_points]
+    # Find class II STPs via B(x*) = 1/(2*beta*rho)
+    all_mu_vals = stable_x + unstable_x
+    all_x_vals = stable_y + unstable_y
     
-    # Split stable points by branch using turning point thresholds
-    if turning_points:
-        lower_knee = min(turning_y)
-        upper_knee = max(turning_y)
-        
-        bottom_stable_x = [sx for sx, sy in zip(stable_x, stable_y) if sy < lower_knee]
-        bottom_stable_y = [sy for sy in stable_y if sy < lower_knee]
-        top_stable_x = [sx for sx, sy in zip(stable_x, stable_y) if sy > upper_knee]
-        top_stable_y = [sy for sy in stable_y if sy > upper_knee]
-        middle_stable_x = [sx for sx, sy in zip(stable_x, stable_y) 
-                          if lower_knee <= sy <= upper_knee]
-        middle_stable_y = [sy for sy in stable_y if lower_knee <= sy <= upper_knee]
-    else:
-        bottom_stable_x, bottom_stable_y = stable_x, stable_y
-        top_stable_x, top_stable_y = [], []
-        middle_stable_x, middle_stable_y = [], []
+    threshold_points = []
+    for i, (mu_val, x_val) in enumerate(zip(all_mu_vals, all_x_vals)):
+        B_val = calculate_B(x_val, mu_val, params['beta'], params['rho'],
+                           params['W1'], params['W2'])
+        B_crit = 1 / (2 * params['beta'] * params['rho'])
+        diff = B_val - B_crit
+        if abs(diff) < 0.1:
+            threshold_points.append((x_val, mu_val, diff))
     
-    # Plot
+    threshold_points = sorted(set(threshold_points))
+    
+    intersection_ys = []
+    for i in range(len(threshold_points) - 1):
+        y1, mu1, diff1 = threshold_points[i]
+        y2, mu2, diff2 = threshold_points[i + 1]
+        if abs(y2 - y1) > 0.2 or abs(mu2 - mu1) > 0.1:
+            continue
+        if diff1 * diff2 < 0:
+            t = abs(diff1) / (abs(diff1) + abs(diff2))
+            y_interp = y1 + t * (y2 - y1)
+            intersection_ys.append(y_interp)
+    
+    turning_x = []
+    turning_y = []
+    mu_critical = 1 / (2 * params['beta'] * params['rho'])
+    for y_val in intersection_ys:
+        def g_at_y(mu):
+            return abs(fixed_point_equation(y_val, mu, params['beta'], params['rho'],
+                                            params['W1'], params['W2']))
+        result = minimize_scalar(g_at_y, bounds=(mu_critical, 1.0), method='bounded')
+        if result.fun < 0.01:
+            turning_x.append(result.x)
+            turning_y.append(y_val)
+    
     fig, ax = plt.subplots(figsize=(7, 5), dpi=100)
     
-    # Plot curves
     if unstable_x:
-        ax.scatter(unstable_x, unstable_y, c='red', s=4, alpha=0.7, 
+        ax.scatter(unstable_x, unstable_y, c='red', s=4, alpha=0.7,
                    zorder=1, edgecolors='none')
-    
-    # Bottom branch - thinner
-    if bottom_stable_x:
-        ax.scatter(bottom_stable_x, bottom_stable_y, c='#6aa84f', s=4, alpha=0.7,
+    if stable_x:
+        ax.scatter(stable_x, stable_y, c='#6aa84f', s=4, alpha=0.7,
                    zorder=2, edgecolors='none')
-    
-    # Top branch - thicker
-    if top_stable_x:
-        ax.scatter(top_stable_x, top_stable_y, c='#6aa84f', s=12, alpha=0.7,
-                   zorder=2, edgecolors='none')
-    
-    # Middle segment - thin (if any stable points there)
-    if middle_stable_x:
-        ax.scatter(middle_stable_x, middle_stable_y, c='#6aa84f', s=4, alpha=0.7,
-                   zorder=2, edgecolors='none')
-    
-    # Turning points - thinner x marks matching legend size
     if turning_x:
-        ax.scatter(turning_x, turning_y, c='black', s=100, marker='x', 
+        ax.scatter(turning_x, turning_y, c='black', s=100, marker='x',
                    linewidths=1.5, zorder=3)
     
-    # Labels and title (reduced font sizes)
     ax.set_xlabel(r'$\mu$', fontsize=13)
     ax.set_ylabel('Equilibria', fontsize=13)
     ax.set_title(r'Bifurcation diagram of $f_2(x)$ varying $\mu$', fontsize=16)
@@ -214,11 +162,9 @@ def generate_diagram(output_path='figures/bifurcation_mu.png'):
     ax.set_ylim(0, 1)
     ax.tick_params(axis='both', labelsize=12)
     
-    # Grid with 0.25 step
     ax.set_xticks(np.arange(0, 1.01, 0.25))
     ax.set_yticks(np.arange(0, 1.01, 0.25))
     
-    # Legend with lines
     legend_elements = [
         Line2D([0], [0], color='red', lw=2, label='class I social tipping points'),
         Line2D([0], [0], color='#6aa84f', lw=2, label='stable equilibria'),
@@ -232,7 +178,7 @@ def generate_diagram(output_path='figures/bifurcation_mu.png'):
     
     if output_path:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(output_path, dpi=100, bbox_inches='tight', 
+        plt.savefig(output_path, dpi=100, bbox_inches='tight',
                     facecolor='white', edgecolor='none')
         print(f"Saved: {output_path}")
     

@@ -10,9 +10,9 @@ except ImportError as exc:
 
 SOURCE_FILES = [
     Path("figures/bifurcation_mu.png"),
-    Path("figures/bifurcation_beta_mu04.png"),
-    Path("figures/bifurcation_W1_mu04.png"),
-    Path("figures/bifurcation_rho_mu04.png"),
+    Path("figures/bifurcation_beta.png"),
+    Path("figures/bifurcation_W1.png"),
+    Path("figures/bifurcation_rho.png"),
 ]
 OUTPUT_FILE = Path("figures/bifurcation_panel.png")
 

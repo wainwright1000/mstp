@@ -256,12 +256,17 @@ The threshold `1/(2βρ)` is a function of the x-axis parameter. Because the pur
 
 ---
 
-## Next Steps (post-merge)
+## Maintenance Notes
 
-1. **Back-port intersection logic** to legacy `bifurcation_*.py` scripts (without B overlay)
-2. **Rename files** so the current `_with_B` versions become the canonical `bifurcation_*.py`
-3. **Archive or delete** the pre-B legacy scripts
-4. **Update this document** to reflect the final file names
+Both the with-B (`*_with_B.py`) and without-B (`*.py`) script suites are actively maintained. They share the same core class-II STP detection algorithm:
+
+1. Compute `B(x*)` at every equilibrium point.
+2. Detect sign changes in `B(x*) - 1/(2βρ)` along branches.
+3. Interpolate to get candidate `x*`.
+4. Solve `g(x*, param) = 0` exactly with `minimize_scalar`.
+5. Mark the result with an X.
+
+The with-B versions additionally draw the purple `B(x*)` overlay and connect circles to X-marks with horizontal grey lines.
 
 ---
 

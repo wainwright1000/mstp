@@ -6,7 +6,7 @@ Parameters: μ=0.54, β=14, W₁=-0.6, W₂=0.3
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import brentq
+from scipy.optimize import brentq, minimize_scalar
 from pathlib import Path
 from matplotlib.lines import Line2D
 
@@ -48,6 +48,19 @@ def response_derivative(x, mu, beta, rho, W1, W2):
     return d1 + d2
 
 
+def calculate_B(x, mu, beta, rho, W1, W2):
+    """
+    Calculate B(x) = mu*Y1 + (1-mu)*Y2 where Yj = Zj/(1+Zj)^2
+    and Zj = exp(beta*(Wj + rho*(1-2x))).
+    """
+    mu2 = 1 - mu
+    Z1 = np.exp(beta * (W1 + rho * (1 - 2*x)))
+    Z2 = np.exp(beta * (W2 + rho * (1 - 2*x)))
+    Y1 = Z1 / (1 + Z1)**2
+    Y2 = Z2 / (1 + Z2)**2
+    return mu * Y1 + mu2 * Y2
+
+
 def find_fixed_points(mu, beta, rho, W1, W2, n_guess=200):
     """Find all fixed points in [0, 1] by scanning for sign changes."""
     x_grid = np.linspace(0, 1, n_guess)
@@ -68,82 +81,23 @@ def find_fixed_points(mu, beta, rho, W1, W2, n_guess=200):
     return sorted(fixed_points, key=lambda x: x[0])
 
 
-def find_turning_points(param_values, all_fixed_points, tolerance=0.03):
-    """
-    Find turning points by tracking branches across parameter values.
-    A turning point (class II STP) occurs when a fixed point has no
-    continuation at the next parameter value - i.e., the branch ends.
-    
-    Also detects boundary starts/ends (branches appearing/disappearing
-    at the edge of the parameter range).
-    """
-    turning_points = []
-    
-    # Check boundary start (first sample)
-    if len(all_fixed_points) > 0:
-        fps_first = all_fixed_points[0]
-        fps_second = all_fixed_points[1] if len(all_fixed_points) > 1 else []
-        for fp_first, _ in fps_first:
-            has_continuation = any(abs(fp_first - fp) < tolerance for fp, _ in fps_second)
-            if not has_continuation:
-                # This branch started at the left boundary
-                turning_points.append((param_values[0], fp_first))
-    
-    for i in range(len(param_values) - 1):
-        p_curr = param_values[i]
-        p_next = param_values[i + 1]
-        fps_curr = all_fixed_points[i]
-        fps_next = all_fixed_points[i + 1]
-        
-        # Check which branches end at this step (present at i, absent at i+1)
-        for fp_curr, _ in fps_curr:
-            has_continuation = False
-            for fp_next, _ in fps_next:
-                if abs(fp_curr - fp_next) < tolerance:
-                    has_continuation = True
-                    break
-            if not has_continuation:
-                turning_points.append((p_curr, fp_curr))
-        
-        # Check which branches start at this step (absent at i, present at i+1)
-        for fp_next, _ in fps_next:
-            has_origin = False
-            for fp_curr, _ in fps_curr:
-                if abs(fp_curr - fp_next) < tolerance:
-                    has_origin = True
-                    break
-            if not has_origin:
-                turning_points.append((p_next, fp_next))
-    
-    # Remove duplicates with wider tolerance
-    unique_turning = []
-    for tp in turning_points:
-        if not any(abs(tp[0] - utp[0]) < 0.08 and abs(tp[1] - utp[1]) < 0.08 
-                   for utp in unique_turning):
-            unique_turning.append(tp)
-    
-    return unique_turning
-
-
 def generate_diagram(output_path='figures/bifurcation_rho.png', mu_value=0.54):
     """Generate bifurcation diagram for varying ρ."""
     params = DEFAULT_PARAMS.copy()
     params['mu'] = mu_value
     param_range = (0.001, 3)
-    n_points = 1000
-    n_guess = 200
+    n_points = 5000
+    n_guess = 1000
     
     param_values = np.linspace(param_range[0], param_range[1], n_points)
     
     stable_x, stable_y = [], []
     unstable_x, unstable_y = [], []
-    all_fixed_points = []
     
     for p_val in param_values:
         p = params.copy()
         p['rho'] = p_val
         fps = find_fixed_points(**p, n_guess=n_guess)
-        all_fixed_points.append(fps)
         for fp, is_stable in fps:
             if is_stable:
                 stable_x.append(p_val)
@@ -152,20 +106,65 @@ def generate_diagram(output_path='figures/bifurcation_rho.png', mu_value=0.54):
                 unstable_x.append(p_val)
                 unstable_y.append(fp)
     
-    turning_points = find_turning_points(param_values, all_fixed_points)
-    turning_x = [tp[0] for tp in turning_points]
-    turning_y = [tp[1] for tp in turning_points]
+    # Find class II STPs via B(x*) = 1/(2*beta*rho)
+    all_rho_vals = stable_x + unstable_x
+    all_x_vals = stable_y + unstable_y
+    
+    threshold_points = []
+    for i, (rho_val, x_val) in enumerate(zip(all_rho_vals, all_x_vals)):
+        B_val = calculate_B(x_val, params['mu'], params['beta'], rho_val,
+                           params['W1'], params['W2'])
+        if rho_val <= 0.01:
+            continue
+        B_crit = 1 / (2 * params['beta'] * rho_val)
+        diff = B_val - B_crit
+        if abs(diff) < 0.1:
+            threshold_points.append((x_val, rho_val, diff))
+    
+    threshold_points = sorted(set(threshold_points))
+    
+    intersection_candidates = []
+    for i in range(len(threshold_points) - 1):
+        y1, rho1, diff1 = threshold_points[i]
+        y2, rho2, diff2 = threshold_points[i + 1]
+        if abs(y2 - y1) > 0.2 or abs(rho2 - rho1) > 0.3:
+            continue
+        if diff1 * diff2 < 0:
+            t = abs(diff1) / (abs(diff1) + abs(diff2))
+            y_interp = y1 + t * (y2 - y1)
+            rho_interp = rho1 + t * (rho2 - rho1)
+            intersection_candidates.append((y_interp, rho_interp))
+    
+    turning_x = []
+    turning_y = []
+    for y_val, rho_guess in intersection_candidates:
+        def intersection_condition(rho):
+            if rho < 0.001:
+                return float('inf')
+            g_val = fixed_point_equation(y_val, params['mu'], params['beta'],
+                                         rho, params['W1'], params['W2'])
+            B_val = calculate_B(y_val, params['mu'], params['beta'], rho,
+                               params['W1'], params['W2'])
+            B_crit = 1 / (2 * params['beta'] * rho)
+            return g_val**2 + (B_val - B_crit)**2
+        
+        lo = max(0.001, rho_guess - 0.2)
+        hi = min(3.0, rho_guess + 0.2)
+        result = minimize_scalar(intersection_condition, bounds=(lo, hi), method='bounded')
+        if result.fun < 0.001:
+            turning_x.append(result.x)
+            turning_y.append(y_val)
     
     fig, ax = plt.subplots(figsize=(7, 5), dpi=100)
     
     if unstable_x:
-        ax.scatter(unstable_x, unstable_y, c='red', s=4, alpha=0.7, 
+        ax.scatter(unstable_x, unstable_y, c='red', s=4, alpha=0.7,
                    zorder=1, edgecolors='none')
     if stable_x:
         ax.scatter(stable_x, stable_y, c='#6aa84f', s=4, alpha=0.7,
                    zorder=2, edgecolors='none')
     if turning_x:
-        ax.scatter(turning_x, turning_y, c='black', s=100, marker='x', 
+        ax.scatter(turning_x, turning_y, c='black', s=100, marker='x',
                    linewidths=1.5, zorder=3)
     
     ax.set_xlabel(r'$\rho$', fontsize=13)
@@ -191,7 +190,7 @@ def generate_diagram(output_path='figures/bifurcation_rho.png', mu_value=0.54):
     
     if output_path:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(output_path, dpi=100, bbox_inches='tight', 
+        plt.savefig(output_path, dpi=100, bbox_inches='tight',
                     facecolor='white', edgecolor='none')
         print(f"Saved: {output_path}")
     
