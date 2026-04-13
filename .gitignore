@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Figures (optional - uncomment if you don't want PNGs in git)
+# figures/
+
+# WhatsApp images
+pz/
