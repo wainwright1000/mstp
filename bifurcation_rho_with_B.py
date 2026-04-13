@@ -147,8 +147,8 @@ def generate_diagram(output_path='figures/bifurcation_rho_with_B.png', mu_value=
     
     intersection_candidates = []
     for i in range(len(threshold_points) - 1):
-        y1, Bs1, rho1, diff1 = threshold_points[i]
-        y2, Bs2, rho2, diff2 = threshold_points[i + 1]
+        y1, _, rho1, diff1 = threshold_points[i]
+        y2, _, rho2, diff2 = threshold_points[i + 1]
         
         # Skip large gaps (different branches)
         if abs(y2 - y1) > 0.2 or abs(rho2 - rho1) > 0.3:

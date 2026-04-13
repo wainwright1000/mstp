@@ -9,12 +9,12 @@ except ImportError as exc:
     )
 
 SOURCE_FILES = [
-    Path("figures/bifurcation_mu_with_B.png"),
-    Path("figures/bifurcation_beta_with_B.png"),
-    Path("figures/bifurcation_W1_with_B.png"),
-    Path("figures/bifurcation_rho_with_B.png"),
+    Path("figures/bifurcation_mu.png"),
+    Path("figures/bifurcation_beta_mu04.png"),
+    Path("figures/bifurcation_W1_mu04.png"),
+    Path("figures/bifurcation_rho_mu04.png"),
 ]
-OUTPUT_FILE = Path("figures/bifurcation_panel_with_B.png")
+OUTPUT_FILE = Path("figures/bifurcation_panel.png")
 
 
 def combine_panel(source_files, output_file):
