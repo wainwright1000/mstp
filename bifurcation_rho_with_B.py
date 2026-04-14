@@ -86,8 +86,8 @@ def generate_diagram(output_path='figures/bifurcation_rho_with_B.png', mu_value=
     params = DEFAULT_PARAMS.copy()
     params['mu'] = mu_value
     param_range = (0.001, 3)
-    n_points = 1000
-    n_guess = 200
+    n_points = 5000
+    n_guess = 1000
     
     param_values = np.linspace(param_range[0], param_range[1], n_points)
     
@@ -215,8 +215,9 @@ def generate_diagram(output_path='figures/bifurcation_rho_with_B.png', mu_value=
         Line2D([0], [0], color='black', marker='x', markersize=10, markeredgewidth=1.5,
                linestyle='None', label='class II social tipping points'),
         Line2D([0], [0], color='purple', lw=1, label=r'$B(x^*)$'),
-        Line2D([0], [0], color='grey', lw=1, linestyle='--',
-               label=r'$1/(2\beta\rho)$')
+        Line2D([0], [0], color='grey', lw=1, linestyle='--', marker='o',
+               markersize=7, markerfacecolor='none', markeredgecolor='black',
+               markeredgewidth=1.5, label=r'$1/(2\beta\rho)$')
     ]
     ax.legend(handles=legend_elements, loc='upper right', fontsize=13, framealpha=0.9)
     

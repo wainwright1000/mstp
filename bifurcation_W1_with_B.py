@@ -197,8 +197,9 @@ def generate_diagram(output_path='figures/bifurcation_W1_with_B.png', mu_value=0
         Line2D([0], [0], color='black', marker='x', markersize=10, markeredgewidth=1.5,
                linestyle='None', label='class II social tipping points'),
         Line2D([0], [0], color='purple', lw=1, label=r'$B(x^*)$'),
-        Line2D([0], [0], color='grey', lw=1, linestyle='--', 
-               label=r'$1/(2\beta\rho)$')
+        Line2D([0], [0], color='grey', lw=1, linestyle='--', marker='o',
+               markersize=7, markerfacecolor='none', markeredgecolor='black',
+               markeredgewidth=1.5, label=r'$1/(2\beta\rho)$')
     ]
     ax.legend(handles=legend_elements, loc='lower right', fontsize=13, framealpha=0.9)
     
