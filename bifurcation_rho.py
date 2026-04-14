@@ -81,7 +81,7 @@ def find_fixed_points(mu, beta, rho, W1, W2, n_guess=200):
     return sorted(fixed_points, key=lambda x: x[0])
 
 
-def generate_diagram(output_path='figures/bifurcation_rho.png', mu_value=0.54):
+def generate_diagram(output_path='figures/bifurcation_rho.png', mu_value=0.4):
     """Generate bifurcation diagram for varying ρ."""
     params = DEFAULT_PARAMS.copy()
     params['mu'] = mu_value

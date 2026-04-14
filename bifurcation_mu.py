@@ -143,13 +143,36 @@ def generate_diagram(output_path='figures/bifurcation_mu.png'):
             turning_x.append(result.x)
             turning_y.append(y_val)
     
+    # Split stable points by branch using turning point thresholds
+    if turning_y:
+        lower_knee = min(turning_y)
+        upper_knee = max(turning_y)
+        
+        bottom_stable_x = [sx for sx, sy in zip(stable_x, stable_y) if sy < lower_knee]
+        bottom_stable_y = [sy for sy in stable_y if sy < lower_knee]
+        top_stable_x = [sx for sx, sy in zip(stable_x, stable_y) if sy > upper_knee]
+        top_stable_y = [sy for sy in stable_y if sy > upper_knee]
+        middle_stable_x = [sx for sx, sy in zip(stable_x, stable_y) 
+                          if lower_knee <= sy <= upper_knee]
+        middle_stable_y = [sy for sy in stable_y if lower_knee <= sy <= upper_knee]
+    else:
+        bottom_stable_x, bottom_stable_y = stable_x, stable_y
+        top_stable_x, top_stable_y = [], []
+        middle_stable_x, middle_stable_y = [], []
+    
     fig, ax = plt.subplots(figsize=(7, 5), dpi=100)
     
     if unstable_x:
         ax.scatter(unstable_x, unstable_y, c='red', s=4, alpha=0.7,
                    zorder=1, edgecolors='none')
-    if stable_x:
-        ax.scatter(stable_x, stable_y, c='#6aa84f', s=4, alpha=0.7,
+    if bottom_stable_x:
+        ax.scatter(bottom_stable_x, bottom_stable_y, c='#6aa84f', s=4, alpha=0.7,
+                   zorder=2, edgecolors='none')
+    if top_stable_x:
+        ax.scatter(top_stable_x, top_stable_y, c='#6aa84f', s=12, alpha=0.7,
+                   zorder=2, edgecolors='none')
+    if middle_stable_x:
+        ax.scatter(middle_stable_x, middle_stable_y, c='#6aa84f', s=4, alpha=0.7,
                    zorder=2, edgecolors='none')
     if turning_x:
         ax.scatter(turning_x, turning_y, c='black', s=100, marker='x',
