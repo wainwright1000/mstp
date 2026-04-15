@@ -17,7 +17,7 @@ plt.rcParams['axes.unicode_minus'] = False
 
 # Default parameters
 DEFAULT_PARAMS = {
-    'mu': 0.54,
+    'mu': 0.4,
     'beta': 14,
     'rho': 1,
     'W1': -0.6,
@@ -52,6 +52,7 @@ def calculate_B(x, mu, beta, rho, W1, W2):
     """
     Calculate B(x) = mu*Y1 + (1-mu)*Y2 where Yj = Zj/(1+Zj)^2
     and Zj = exp(beta*(Wj + rho*(1-2x))).
+    This appears in the gradient formula: df/dx = 2*beta*rho*B(x).
     """
     mu2 = 1 - mu
     Z1 = np.exp(beta * (W1 + rho * (1 - 2*x)))
@@ -59,6 +60,13 @@ def calculate_B(x, mu, beta, rho, W1, W2):
     Y1 = Z1 / (1 + Z1)**2
     Y2 = Z2 / (1 + Z2)**2
     return mu * Y1 + mu2 * Y2
+
+
+def scale_b_to_axis(B_val, param_range):
+    """Map raw B(x*) to the native horizontal axis so purple overlays align visually across the four-panel figure."""
+    scale = param_range[1] - param_range[0]
+    offset = param_range[0]
+    return B_val * scale + offset
 
 
 def find_fixed_points(mu, beta, rho, W1, W2, n_guess=200):
@@ -117,8 +125,8 @@ def generate_diagram(output_path='figures/bifurcation_W1_with_B.png', mu_value=0
     
     # Vertical line at normalized x = 1/(2*beta*rho)
     normalized_critical = 1 / (2 * params['beta'] * params['rho'])
-    mu_critical = normalized_critical * 3.5 - 1.5  # Scale to W1 range
-    ax.axvline(x=mu_critical, color='grey', linestyle='--', linewidth=1, 
+    W1_critical = scale_b_to_axis(normalized_critical, param_range)
+    ax.axvline(x=W1_critical, color='grey', linestyle='--', linewidth=1, 
                alpha=0.7, zorder=0)
     
     # Calculate and plot B(x*) at equilibrium points
@@ -127,7 +135,7 @@ def generate_diagram(output_path='figures/bifurcation_W1_with_B.png', mu_value=0
     for W1_val, x_val in zip(stable_x + unstable_x, stable_y + unstable_y):
         B_val = calculate_B(x_val, params['mu'], params['beta'], params['rho'], 
                            W1_val, params['W2'])
-        B_x_vals.append(B_val * 3.5 - 1.5)  # Scale to W1 range
+        B_x_vals.append(scale_b_to_axis(B_val, param_range))
         B_y_vals.append(x_val)
     
     if B_x_vals:
@@ -135,10 +143,10 @@ def generate_diagram(output_path='figures/bifurcation_W1_with_B.png', mu_value=0
                    zorder=4, edgecolors='none', label=r'$B(x^*)$')
     
     # Find where purple curve intersects vertical line
-    target_B = mu_critical
+    target_B = W1_critical
     nearby_threshold = 0.1 * 3.5
     
-    purple_points = [(y, B) for y, B in zip(B_y_vals, B_x_vals) 
+    purple_points = [(y, B) for y, B in zip(B_y_vals, B_x_vals)
                      if abs(B - target_B) < nearby_threshold]
     purple_points = sorted(set(purple_points))
     
@@ -164,16 +172,16 @@ def generate_diagram(output_path='figures/bifurcation_W1_with_B.png', mu_value=0
             return abs(fixed_point_equation(y_val, params['mu'], params['beta'], 
                                             params['rho'], W1, params['W2']))
         
-        result = minimize_scalar(g_at_y, bounds=(mu_critical, 2.0), method='bounded')
+        result = minimize_scalar(g_at_y, bounds=(W1_critical, 2.0), method='bounded')
         best_W1 = result.x
         best_g = result.fun
         
         if best_g < 0.01:
             new_turning_x.append(best_W1)
             new_turning_y.append(y_val)
-            ax.plot([mu_critical, best_W1], [y_val, y_val],
+            ax.plot([W1_critical, best_W1], [y_val, y_val],
                    color='grey', linestyle='--', linewidth=1, alpha=0.7, zorder=0)
-            ax.plot(mu_critical, y_val, 'ko', markersize=7, markerfacecolor='none',
+            ax.plot(W1_critical, y_val, 'ko', markersize=7, markerfacecolor='none',
                     markeredgewidth=1.5, zorder=5)
     
     # Plot turning points with x marks

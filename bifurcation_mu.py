@@ -17,7 +17,7 @@ plt.rcParams['axes.unicode_minus'] = False
 
 # Default parameters
 DEFAULT_PARAMS = {
-    'mu': 0.54,
+    'mu': 0.4,
     'beta': 14,
     'rho': 1,
     'W1': -0.6,
@@ -52,6 +52,7 @@ def calculate_B(x, mu, beta, rho, W1, W2):
     """
     Calculate B(x) = mu*Y1 + (1-mu)*Y2 where Yj = Zj/(1+Zj)^2
     and Zj = exp(beta*(Wj + rho*(1-2x))).
+    This appears in the gradient formula: df/dx = 2*beta*rho*B(x).
     """
     mu2 = 1 - mu
     Z1 = np.exp(beta * (W1 + rho * (1 - 2*x)))
@@ -59,6 +60,13 @@ def calculate_B(x, mu, beta, rho, W1, W2):
     Y1 = Z1 / (1 + Z1)**2
     Y2 = Z2 / (1 + Z2)**2
     return mu * Y1 + mu2 * Y2
+
+
+def scale_b_to_axis(B_val, param_range):
+    """Map raw B(x*) to the native horizontal axis so purple overlays align visually across the four-panel figure."""
+    scale = param_range[1] - param_range[0]
+    offset = param_range[0]
+    return B_val * scale + offset
 
 
 def find_fixed_points(mu, beta, rho, W1, W2, n_guess=200):
@@ -81,6 +89,42 @@ def find_fixed_points(mu, beta, rho, W1, W2, n_guess=200):
     return sorted(fixed_points, key=lambda x: x[0])
 
 
+def find_turning_points(param_values, all_fixed_points, tolerance=0.08):
+    """
+    Find turning points by tracking branches across parameter values.
+    Used ONLY for determining branch thickness in the μ diagram.
+    Class II STPs are found separately via the B-criterion.
+    """
+    turning_points = []
+    for i in range(len(param_values) - 1):
+        p_curr = param_values[i]
+        p_next = param_values[i + 1]
+        fps_curr = all_fixed_points[i]
+        fps_next = all_fixed_points[i + 1]
+        for fp_curr, _ in fps_curr:
+            has_continuation = False
+            for fp_next, _ in fps_next:
+                if abs(fp_curr - fp_next) < tolerance:
+                    has_continuation = True
+                    break
+            if not has_continuation:
+                turning_points.append((p_curr, fp_curr))
+        for fp_next, _ in fps_next:
+            has_origin = False
+            for fp_curr, _ in fps_curr:
+                if abs(fp_curr - fp_next) < tolerance:
+                    has_origin = True
+                    break
+            if not has_origin:
+                turning_points.append((p_next, fp_next))
+    unique_turning = []
+    for tp in turning_points:
+        if not any(abs(tp[0] - utp[0]) < 0.05 and abs(tp[1] - utp[1]) < 0.05
+                   for utp in unique_turning):
+            unique_turning.append(tp)
+    return unique_turning
+
+
 def generate_diagram(output_path='figures/bifurcation_mu.png'):
     """Generate bifurcation diagram for varying μ."""
     params = DEFAULT_PARAMS.copy()
@@ -92,11 +136,13 @@ def generate_diagram(output_path='figures/bifurcation_mu.png'):
     
     stable_x, stable_y = [], []
     unstable_x, unstable_y = [], []
+    all_fixed_points = []
     
     for p_val in param_values:
         p = params.copy()
         p['mu'] = p_val
         fps = find_fixed_points(**p, n_guess=n_guess)
+        all_fixed_points.append(fps)
         for fp, is_stable in fps:
             if is_stable:
                 stable_x.append(p_val)
@@ -104,6 +150,10 @@ def generate_diagram(output_path='figures/bifurcation_mu.png'):
             else:
                 unstable_x.append(p_val)
                 unstable_y.append(fp)
+    
+    # Find class I turning points (used only for branch thickness)
+    turning_points = find_turning_points(param_values, all_fixed_points)
+    turning_y_for_split = [tp[1] for tp in turning_points]
     
     # Find class II STPs via B(x*) = 1/(2*beta*rho)
     all_mu_vals = stable_x + unstable_x
@@ -131,8 +181,8 @@ def generate_diagram(output_path='figures/bifurcation_mu.png'):
             y_interp = y1 + t * (y2 - y1)
             intersection_ys.append(y_interp)
     
-    turning_x = []
-    turning_y = []
+    classII_x = []
+    classII_y = []
     mu_critical = 1 / (2 * params['beta'] * params['rho'])
     for y_val in intersection_ys:
         def g_at_y(mu):
@@ -140,13 +190,13 @@ def generate_diagram(output_path='figures/bifurcation_mu.png'):
                                             params['W1'], params['W2']))
         result = minimize_scalar(g_at_y, bounds=(mu_critical, 1.0), method='bounded')
         if result.fun < 0.01:
-            turning_x.append(result.x)
-            turning_y.append(y_val)
+            classII_x.append(result.x)
+            classII_y.append(y_val)
     
-    # Split stable points by branch using turning point thresholds
-    if turning_y:
-        lower_knee = min(turning_y)
-        upper_knee = max(turning_y)
+    # Split stable points by branch using class I turning point thresholds
+    if turning_y_for_split:
+        lower_knee = min(turning_y_for_split)
+        upper_knee = max(turning_y_for_split)
         
         bottom_stable_x = [sx for sx, sy in zip(stable_x, stable_y) if sy < lower_knee]
         bottom_stable_y = [sy for sy in stable_y if sy < lower_knee]
@@ -174,8 +224,8 @@ def generate_diagram(output_path='figures/bifurcation_mu.png'):
     if middle_stable_x:
         ax.scatter(middle_stable_x, middle_stable_y, c='#6aa84f', s=4, alpha=0.7,
                    zorder=2, edgecolors='none')
-    if turning_x:
-        ax.scatter(turning_x, turning_y, c='black', s=100, marker='x',
+    if classII_x:
+        ax.scatter(classII_x, classII_y, c='black', s=100, marker='x',
                    linewidths=1.5, zorder=3)
     
     ax.set_xlabel(r'$\mu$', fontsize=13)

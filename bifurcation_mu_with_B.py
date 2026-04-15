@@ -6,7 +6,7 @@ Parameters: β=14, ρ=1, W₁=-0.6, W₂=0.3
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import brentq
+from scipy.optimize import brentq, minimize_scalar
 from pathlib import Path
 from matplotlib.lines import Line2D
 
@@ -17,7 +17,7 @@ plt.rcParams['axes.unicode_minus'] = False
 
 # Default parameters
 DEFAULT_PARAMS = {
-    'mu': 0.54,
+    'mu': 0.4,
     'beta': 14,
     'rho': 1,
     'W1': -0.6,
@@ -60,6 +60,13 @@ def calculate_B(x, mu, beta, rho, W1, W2):
     Y1 = Z1 / (1 + Z1)**2
     Y2 = Z2 / (1 + Z2)**2
     return mu * Y1 + mu2 * Y2
+
+
+def scale_b_to_axis(B_val, param_range):
+    """Map raw B(x*) to the native horizontal axis so purple overlays align visually across the four-panel figure."""
+    scale = param_range[1] - param_range[0]
+    offset = param_range[0]
+    return B_val * scale + offset
 
 
 def find_fixed_points(mu, beta, rho, W1, W2, n_guess=200):
@@ -217,7 +224,6 @@ def generate_diagram(output_path='figures/bifurcation_mu_with_B.png'):
     
     # Vertical line at x = 1/(2*beta*rho) (calculated value, not mu-related)
     mu_critical = 1 / (2 * params['beta'] * params['rho'])
-    mu_critical = 1 / (2 * params['beta'] * params['rho'])
     ax.axvline(x=mu_critical, color='grey', linestyle='--', linewidth=1, 
                alpha=0.7, zorder=0)
     
@@ -229,7 +235,7 @@ def generate_diagram(output_path='figures/bifurcation_mu_with_B.png'):
     for mu_val, x_val in zip(stable_x + unstable_x, stable_y + unstable_y):
         B_val = calculate_B(x_val, mu_val, params['beta'], params['rho'], 
                            params['W1'], params['W2'])
-        B_x_vals.append(B_val)  # x-coordinate is B(x*)
+        B_x_vals.append(scale_b_to_axis(B_val, param_range))  # x-coordinate is B(x*) mapped to axis
         B_y_vals.append(x_val)  # y-coordinate is x*
     
     if B_x_vals:
@@ -273,7 +279,6 @@ def generate_diagram(output_path='figures/bifurcation_mu_with_B.png'):
     
     for y_val in intersection_ys:
         # Find where g(x*) = 0 at this y by searching horizontally
-        from scipy.optimize import minimize_scalar
         
         def g_at_y(mu):
             return abs(fixed_point_equation(y_val, mu, params['beta'], params['rho'],

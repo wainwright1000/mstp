@@ -17,7 +17,7 @@ plt.rcParams['axes.unicode_minus'] = False
 
 # Default parameters
 DEFAULT_PARAMS = {
-    'mu': 0.54,
+    'mu': 0.4,
     'beta': 14,
     'rho': 1,
     'W1': -0.6,
@@ -52,6 +52,7 @@ def calculate_B(x, mu, beta, rho, W1, W2):
     """
     Calculate B(x) = mu*Y1 + (1-mu)*Y2 where Yj = Zj/(1+Zj)^2
     and Zj = exp(beta*(Wj + rho*(1-2x))).
+    This appears in the gradient formula: df/dx = 2*beta*rho*B(x).
     """
     mu2 = 1 - mu
     Z1 = np.exp(beta * (W1 + rho * (1 - 2*x)))
@@ -59,6 +60,13 @@ def calculate_B(x, mu, beta, rho, W1, W2):
     Y1 = Z1 / (1 + Z1)**2
     Y2 = Z2 / (1 + Z2)**2
     return mu * Y1 + mu2 * Y2
+
+
+def scale_b_to_axis(B_val, param_range):
+    """Map raw B(x*) to the native horizontal axis so purple overlays align visually across the four-panel figure."""
+    scale = param_range[1] - param_range[0]
+    offset = param_range[0]
+    return B_val * scale + offset
 
 
 def find_fixed_points(mu, beta, rho, W1, W2, n_guess=200):
@@ -121,7 +129,7 @@ def generate_diagram(output_path='figures/bifurcation_rho_with_B.png', mu_value=
     for rho_val, x_val in zip(stable_x + unstable_x, stable_y + unstable_y):
         B_val = calculate_B(x_val, params['mu'], params['beta'], rho_val,
                            params['W1'], params['W2'])
-        B_x_vals.append(B_val * 3)
+        B_x_vals.append(scale_b_to_axis(B_val, param_range))
         B_y_vals.append(x_val)
     
     if B_x_vals:
@@ -183,7 +191,7 @@ def generate_diagram(output_path='figures/bifurcation_rho_with_B.png', mu_value=
             rho_at_int = result.x
             B_at_int = calculate_B(y_val, params['mu'], params['beta'], rho_at_int,
                                    params['W1'], params['W2'])
-            B_scaled = B_at_int * 3
+            B_scaled = scale_b_to_axis(B_at_int, param_range)
             
             new_turning_x.append(rho_at_int)
             new_turning_y.append(y_val)

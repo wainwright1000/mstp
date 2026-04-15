@@ -1,288 +1,148 @@
-# Bifurcation Diagram Generation Logic
+# Bifurcation Diagram Logic
 
-## Overview
-This document describes the logic for generating bifurcation diagrams with B(x*) overlay for the f₂(x) model. The key challenge is correctly identifying and visualizing class II social tipping points (STPs) where B(x*) = 1/(2βρ).
+## Agent Guardrails — Do Not Change Without Explicit Confirmation
+
+- **Maintain both script suites.** The `*_with_B.py` and `*.py` files are intentionally kept in parallel. Do not merge them or delete one suite.
+- **No vertical reference line for β or ρ.** The threshold `1/(2βρ)` varies with the x-axis parameter in these plots. Adding a vertical line or a native-axis curve here is a known visual error.
+- **Do not alter circle/X-mark coordinate logic without testing all four parameters.** The placement rules differ between constant-threshold parameters (μ, W₁) and varying-threshold parameters (β, ρ).
+- **Keep Arial font and the current colour scheme.** Green = stable, red = unstable (class I STPs), purple = B(x*), black circle = B-curve/threshold intersection, black X = exact class II STP, grey dashed = horizontal connector (all params) or vertical threshold line (μ, W₁ only).
+- **Top equilibrium line in the μ diagram must stay thicker.** It lies so close to x = 1 that it is nearly invisible at standard line weight, and unlike other parameters the segment does not appear elsewhere on the plot.
+- **Use `scale_b_to_axis` for all purple overlays.** All eight scripts share the same helper: `B_val * range_width + range_min`. This keeps the four-panel figure visually consistent.
+- **Do not simplify the branch-gap logic.** The `abs(y2 - y1) > 0.2` (or `abs(x2 - x1) > 0.2`) gap checks are necessary to prevent interpolating across disconnected equilibrium branches.
+
+---
+
+## File Map
+
+| Script | Output | Threshold type | Reference line? | Notes |
+| -------- | -------- | ---------------- | ----------------- | ------- |
+| `bifurcation_mu.py` | `figures/bifurcation_mu.png` | Constant | Vertical grey line | Native axes, no B overlay |
+| `bifurcation_mu_with_B.py` | `figures/bifurcation_mu_with_B.png` | Constant | Vertical grey line | With purple B(x*) overlay |
+| `bifurcation_W1.py` | `figures/bifurcation_W1.png` | Constant | Vertical grey line | Native axes, no B overlay |
+| `bifurcation_W1_with_B.py` | `figures/bifurcation_W1_with_B.png` | Constant | Vertical grey line | With purple B(x*) overlay |
+| `bifurcation_beta.py` | `figures/bifurcation_beta.png` | Varying | None | Native axes, no B overlay |
+| `bifurcation_beta_with_B.py` | `figures/bifurcation_beta_with_B.png` | Varying | None | With purple B(x*) overlay |
+| `bifurcation_rho.py` | `figures/bifurcation_rho.png` | Varying | None | Native axes, no B overlay |
+| `bifurcation_rho_with_B.py` | `figures/bifurcation_rho_with_B.png` | Varying | None | With purple B(x*) overlay |
+| `combine_figures.py` | `figures/combined_bifurcation.png` | — | — | 2×2 panel of the without-B set |
+| `combine_figures_with_B.py` | `figures/combined_bifurcation_with_B.png` | — | — | 2×2 panel of the with-B set |
+
+All scripts must remain consistent with the class-II STP detection algorithm described below.
+
+---
 
 ## Core Mathematics
 
-### The Model
-- Response function: f₂(x) = μ/(1+exp(β(W₁+ρ(1-2x)))) + (1-μ)/(1+exp(β(W₂+ρ(1-2x))))
-- Fixed points: g(x) = f(x) - x = 0
-- Stability: |f'(x*)| < 1 for stable, > 1 for unstable
+### Model
 
-### B(x) Calculation (Proposition 2.13)
-```
+- Response function: `f₂(x) = μ/(1+exp(β(W₁+ρ(1-2x)))) + (1-μ)/(1+exp(β(W₂+ρ(1-2x))))`
+- Fixed points: solve `g(x) = f(x) - x = 0`
+- Stability: stable if `|f'(x*)| < 1`, unstable if `> 1`
+
+### B(x) (Proposition 2.13)
+
+```text
 Zⱼ = exp(β(Wⱼ + ρ(1-2x)))
-Yⱼ = Zⱼ/(1+Zⱼ)²
+Yⱼ = Zⱼ / (1+Zⱼ)²
 B(x) = μ·Y₁ + (1-μ)·Y₂
 ```
 
 ### Class II STP Condition
-B(x*) = 1/(2βρ) is the threshold where equilibria transition stability in a degenerate way.
+
+`B(x*) = 1/(2βρ)` marks the degenerate stability transition.
 
 ---
 
-## Parameter-Specific Logic
+## Algorithm Invariants (All Scripts)
 
-### CRITICAL INSIGHT: The Threshold Depends on Which Parameter Varies
+For every parameter value in the swept range:
 
-The condition B(x*) = 1/(2βρ) behaves differently depending on which parameter is on the x-axis:
+1. **Find all equilibria** `x*` of `g(x) = 0`.
+2. **Classify stability** by evaluating `|f'(x*)|`.
+3. **Compute `B(x*)`** at each equilibrium.
+4. **Detect sign changes** in `B(x*) - 1/(2βρ)` along single branches (skip gaps > 0.2).
+5. **Solve exactly** for the parameter value where `g(x*) = 0` and `B(x*) = 1/(2βρ)` using `minimize_scalar` with tight bounds around the interpolated candidate.
+6. **Mark the result** with an X.
 
-#### 1. μ varies (x-axis = μ ∈ [0,1])
-- **Threshold**: 1/(2βρ) is CONSTANT (doesn't depend on μ)
-- **Visualization**: Vertical line at x = 1/(2βρ) ≈ 0.036
-- **Circle placement**: Where purple B(x*) curve crosses the vertical line
-- **Why it works**: μ doesn't appear in the threshold, so fixed vertical line is correct
+The with-B scripts add two extra steps:
 
-#### 2. β varies (x-axis = β ∈ [0,14])
-- **Threshold**: 1/(2βρ) varies with β
-- **Visualization**: Purple B(x*) overlay uses horizontal axis `B(x*) × 14`. No reference curve is plotted in native coordinates because the threshold and the purple curve live in different coordinate systems.
-- **Circle placement**: Where purple B(x*) curve satisfies `B(x*) = 1/(2βρ)`
-- **Key insight**: Cannot use vertical line - the threshold itself changes with β
+- Plot the purple `B(x*)` curve via `scale_b_to_axis(B_val, param_range) = B_val * range_width + range_min`.
+- Place a circle at the intersection of the purple curve with the threshold, and connect circle ↔ X with a horizontal grey dashed line at the same `y = x*`.
 
-#### 3. ρ varies (x-axis = ρ ∈ [0.001, 3])
-- **Threshold**: 1/(2βρ) varies with ρ
-- **Visualization**: Purple B(x*) overlay uses horizontal axis `B(x*) × 3`. No reference curve is plotted in native coordinates.
-- **Circle placement**: Where purple B(x*) curve satisfies `B(x*) = 1/(2βρ)`
+**Resolution exception:** The ρ scripts use `n_points = 5000` and `n_guess = 1000` (vs 1000/200 elsewhere) because the ρ diagram contains sparse regions that produce visible inaccuracies at standard resolution.
 
-#### 4. W₁ varies (x-axis = W₁ ∈ [-1.5, 2])
-- **Threshold**: 1/(2βρ) is CONSTANT (doesn't depend on W₁)
-- **Visualization**: Vertical line at scaled position
-- **Similar to μ**: W₁ doesn't appear in threshold
+### Constant vs Varying Threshold
 
----
+| Parameter | X-axis range | Threshold `1/(2βρ)` | Reference line | Scale factor for B-axis |
+| ----------- | -------------- | --------------------- | ---------------- | ------------------------ |
+| μ | [0, 1] | Constant | Vertical line at `1/(2βρ)` | `range_width = 1.0` |
+| W₁ | [-1.5, 2] | Constant | Vertical line at `scale_b_to_axis(1/(2βρ), param_range)` | `range_width = 3.5` |
+| β | [0, 14] | Varies with β | **None** | `range_width = 14.0` |
+| ρ | [0.001, 3] | Varies with ρ | **None** | `range_width = 2.999` |
 
-## Working Algorithm (for μ and W₁ - CONSTANT threshold)
-
-These work with a vertical reference line:
-
-### Step 1: Generate Equilibrium Curves
-```python
-for param_val in param_range:
-    fps = find_fixed_points(...)  # All equilibria at this parameter value
-    classify as stable/unstable
-    store (param_val, x*) pairs
-```
-
-### Step 2: Calculate B(x*) at Equilibrium Points
-```python
-for each (param_val, x_val) in equilibria:
-    B_val = calculate_B(x_val, mu_at_this_point, beta, rho, W1, W2)
-    B_x_vals.append(B_val)  # x-coordinate is B value (0-0.25 range)
-    B_y_vals.append(x_val)  # y-coordinate is x* (0-1 range)
-    # Note: For scaled axes, multiply B_val by scale_factor
-```
-
-### Step 3: Plot Reference Line
-```python
-# For μ or W1: vertical line at constant threshold
-normalized_critical = 1 / (2 * beta * rho)
-# Scale to axis range (e.g., ×1 for μ, ×3.5 for W1)
-ax.axvline(x=normalized_critical * scale_factor, ...)
-```
-
-### Step 4: Find Intersections (Circles)
-```python
-target_B = normalized_critical * scale_factor
-nearby_threshold = 0.1 * scale_factor  # Only consider B within this range
-
-# Filter purple points near the target
-purple_points = [(y, B) for y, B in zip(B_y_vals, B_x_vals) 
-                 if abs(B - target_B) < nearby_threshold]
-purple_points = sorted(set(purple_points))  # Sort by y
-
-# Find sign changes in (B - target_B) = intersection
-intersection_ys = []
-for i in range(len(purple_points) - 1):
-    y1, B1 = purple_points[i]
-    y2, B2 = purple_points[i + 1]
-    
-    if abs(y2 - y1) > 0.2:  # Skip large gaps (different branches)
-        continue
-    
-    if (B1 - target_B) * (B2 - target_B) < 0:  # Sign change
-        t = (target_B - B1) / (B2 - B1)  # Linear interpolation
-        y_interp = y1 + t * (y2 - y1)
-        intersection_ys.append(y_interp)
-```
-
-### Step 5: Place Circles and Draw Lines to X Marks
-```python
-for y_val in intersection_ys:
-    # Circle at intersection with vertical line
-    ax.plot(mu_critical, y_val, 'ko', markerfacecolor='none', ...)
-    
-    # Find closest turning point at this y
-    # Turning points are class I STPs (where branches appear/disappear)
-    best_tx = None
-    best_dist = float('inf')
-    for tx, ty in zip(turning_x, turning_y):
-        dist = abs(ty - y_val)
-        if dist < best_dist:
-            best_dist = dist
-            best_tx = tx
-    
-    if best_tx is not None and best_dist < 0.15:  # Threshold for matching
-        # Horizontal line from circle to turning point
-        ax.plot([mu_critical, best_tx], [y_val, y_val], 'grey', linestyle='--')
-        # X mark at turning point
-        ax.plot(best_tx, y_val, 'kx', markersize=10)
-```
+For μ and W₁ the threshold does not depend on the x-axis parameter, so a vertical reference line is correct. For β and ρ the threshold is a hyperbola in `(parameter, B)` space; because the purple overlay already lives in a different coordinate system (`B × scale_factor`), plotting an extra reference curve in native coordinates creates a misleading visual. The correct visual is the purple overlay plus the circle/X connector only.
 
 ---
 
-## Algorithm for β and ρ (VARYING threshold)
+## Decision Log
 
-### Key Difference
-The threshold 1/(2βρ) changes with the x-axis parameter. The purple `B(x*)` overlay uses a different horizontal scale (`B × scale_factor`), so we do **not** plot a reference curve in the native axes.
+1. **Parallel suites (with-B and without-B)**
+   - *Why:* The without-B scripts provide clean native-axis bifurcation diagrams suitable for publication or presentations where the B overlay would clutter the figure. The with-B scripts include the purple B(x*) overlay for detailed analysis.
+   - *When settled:* After implementing and comparing both versions; both are now kept in sync.
 
-### Step 1-2: Same as above (generate equilibria, calculate B(x*))
+2. **No reference curve for β and ρ**
+   - *Why:* Early attempts plotted `B_crit = 1/(2βρ)` as a curve in native axes. This is visually wrong because the purple `B(x*)` overlay uses a scaled horizontal axis (`B × scale_factor`) while the native axis shows the parameter itself. The only correct markers are the circle (on the purple curve) and the X (on the native parameter axis), joined by a horizontal line.
+   - *When settled:* After debugging misaligned markers in `bifurcation_beta_with_B.py`.
 
-### Step 3: Build Equilibrium Data with B_crit
-```python
-# For each equilibrium, calculate both B(x*) and B_crit at that parameter
-for beta_val, x_val in zip(all_beta_vals, all_x_vals):
-    B_val = calculate_B(x_val, mu, beta_val, rho, W1, W2)
-    B_scaled = B_val * 14
-    B_crit = 1 / (2 * beta_val * rho) if beta_val > 0.1 else inf
-    equilibrium_data.append((beta_val, x_val, B_scaled, B_val, B_crit))
-```
+3. **Scaled B-axis via `scale_b_to_axis`**
+   - *Why:* Raw `B(x*)` values are small (≈ 0–0.25). Scaling them to the native parameter range makes the curve visible and keeps the four-panel figure visually consistent. All eight scripts now use the same helper: `B_val * range_width + range_min`.
+   - *When settled:* During the refactor to consolidate cross-script differences.
 
-### Step 4: Find Intersections (Where B(x*) = B_crit)
-```python
-# Sort by x* to follow branches
-equilibrium_data.sort(key=lambda t: t[1])
+4. **Exact solving with `minimize_scalar`**
+   - *Why:* Simple interpolation of the discrete equilibrium curve is not accurate enough for publication-quality figures. We first interpolate to get a candidate `x*`, then use `minimize_scalar` on `g(x*, param)² + (B(x*) - B_crit)²` with tight bounds to pin down the exact parameter value.
 
-intersection_ys = []
-for i in range(len(equilibrium_data) - 1):
-    beta1, x1, Bs1, Bv1, Bc1 = equilibrium_data[i]
-    beta2, x2, Bs2, Bv2, Bc2 = equilibrium_data[i+1]
-    
-    # Only consider nearby points (same branch)
-    if abs(x2 - x1) > 0.2 or abs(beta2 - beta1) > 1:
-        continue
-    
-    diff1 = Bv1 - Bc1
-    diff2 = Bv2 - Bc2
-    
-    if diff1 * diff2 < 0:  # Sign change = intersection
-        t = abs(diff1) / (abs(diff1) + abs(diff2))
-        y_interp = x1 + t * (x2 - x1)
-        intersection_ys.append(y_interp)
-```
+5. **Arial font throughout**
+   - *Why:* Consistent journal-style formatting across all figures.
 
-### Step 5: Find Exact Intersection Points and Place Markers
-```python
-for y_val in intersection_ys:
-    # Solve for exact beta where: g(y_val, beta) = 0 AND B(y_val, beta) = 1/(2*beta*rho)
-    def intersection_condition(beta):
-        g_val = fixed_point_equation(y_val, mu, beta, rho, W1, W2)
-        B_val = calculate_B(y_val, mu, beta, rho, W1, W2)
-        B_crit = 1 / (2 * beta * rho)
-        return g_val**2 + (B_val - B_crit)**2
-    
-    result = minimize_scalar(intersection_condition, bounds=(0.5, 14), method='bounded')
-    
-    if result.fun < 0.001:  # Good solution found
-        beta_at_int = result.x
-        B_at_int = calculate_B(y_val, mu, beta_at_int, rho, W1, W2)
-        B_scaled = B_at_int * 14
-        
-        # Circle at (B_scaled, y_val) - on purple curve at intersection
-        ax.plot(B_scaled, y_val, 'ko', markerfacecolor='none', ...)
-        
-        # X mark at the exact beta where g(y_val, beta) = 0 and B = B_crit
-        ax.plot(beta_at_int, y_val, 'kx', ...)
-        
-        # Horizontal dashed line connecting them
-        ax.plot([B_scaled, beta_at_int], [y_val, y_val], 'grey', linestyle='--')
-```
+6. **Reference parameters updated to μ = 0.4**
+   - *Why:* `mu = 0.54` was an older reference model. The current reference is `μ = 0.4, β = 14, ρ = 1, W₁ = -0.6, W₂ = 0.3`. All `DEFAULT_PARAMS` dictionaries and the `mu_value=0.4` signature defaults now match.
+   - *Consequence:* There is no practical change to the generated figures, because the β/ρ/W₁ scripts already overrode `mu` to 0.4 via their signature defaults. The change only removes a source of confusion.
+   - *When settled:* During the cross-script consistency check.
 
-For ρ, the logic is identical but with scale factor 3 and appropriate bounds.
+7. **`find_turning_points` used only for branch thickness in μ**
+   - *Why:* The without-B `bifurcation_mu.py` was accidentally using class-II STP y-values to split branches for point-size styling, while the with-B version used class-I turning points. Both μ scripts now use `find_turning_points` (class-I) for the split, and the B-criterion exclusively for the X-marks.
+   - *When settled:* During the cross-script consistency check.
+
+8. **Higher resolution for ρ**
+   - *Why:* The ρ diagram contains sparse regions that produced visible inaccuracies at the standard 1000 × 200 resolution.
+   - *When settled:* After observing artefacts in early ρ plots.
 
 ---
 
-## Scaling Reference
+## Common Agent Pitfalls
 
-| Parameter | Range | Scale Factor | Offset | Vertical Line Position |
-|-----------|-------|--------------|--------|------------------------|
-| μ | [0, 1] | 1 | 0 | 1/(2βρ) ≈ 0.036 |
-| β | [0, 14] | 14 | 0 | Curve: B_crit(β) = 1/(2βρ) |
-| ρ | [0.001, 3] | 3 | 0.001 | Curve: B_crit(ρ) = 1/(2βρ) |
-| W₁ | [-1.5, 2] | 3.5 | -1.5 | 1/(2βρ) scaled to range |
-
-Note: For β and ρ, the threshold varies, so we plot a curve, not a vertical line.
-
----
-
-## Critical Lessons Learned
-
-### 1. Threshold Constancy Matters
-- **μ and W₁**: Threshold 1/(2βρ) is constant → vertical line works
-- **β and ρ**: Threshold varies with parameter → needs hyperbolic curve
-
-### 2. Intersection Detection
-- Must sort points by y-value (x*) to follow branches
-- Skip large gaps (>0.2 in y) to avoid interpolating across branches
-- Use sign change detection: (B1 - target) × (B2 - target) < 0
-
-### 3. Circle Placement
-- Circles go at the B(x*) curve position: (B_scaled, y_int)
-
-### 4. X Mark Placement
-- X marks go at the exact parameter value where `g(x*) = 0` AND `B(x*) = 1/(2βρ)`
-- Horizontal lines connect circles to X marks (same y-value)
-- For μ and W₁ (constant threshold), X marks are found by minimizing `|g(y, param)|` along the horizontal line from the vertical reference line.
-- For β and ρ (varying threshold), X marks are found by the same minimization after locating the intersection on the purple curve.
-
-### 5. Avoiding False Positives
-- For varying thresholds (β, ρ), must solve both g(x*)=0 AND B=B_crit simultaneously
-- Use the interpolated parameter value from Step 4 to set tight bounds for `minimize_scalar`
-- This prevents the optimizer from wandering to distant branches
-
-### 6. The Beta/Rho Coordinate Confusion
-The threshold `1/(2βρ)` is a function of the x-axis parameter. Because the purple `B(x*)` curve uses a different horizontal scale (`B × scale_factor`), plotting the threshold as a curve in native coordinates creates a misleading visual. The correct approach is to show only the purple overlay and the horizontal connectors; the circles themselves mark where the intersection condition is satisfied.
-
----
-
-## File Status
-
-| File | Status | Notes |
-|------|--------|-------|
-| bifurcation_mu_with_B.py | Working | Constant threshold, vertical line |
-| bifurcation_W1_with_B.py | Working | Constant threshold, vertical line |
-| bifurcation_beta_with_B.py | Working | Varying threshold, purple overlay only |
-| bifurcation_rho_with_B.py | Working | Varying threshold, purple overlay only |
-
----
-
-## Maintenance Notes
-
-Both the with-B (`*_with_B.py`) and without-B (`*.py`) script suites are actively maintained. They share the same core class-II STP detection algorithm:
-
-1. Compute `B(x*)` at every equilibrium point.
-2. Detect sign changes in `B(x*) - 1/(2βρ)` along branches.
-3. Interpolate to get candidate `x*`.
-4. Solve `g(x*, param) = 0` exactly with `minimize_scalar`.
-5. Mark the result with an X.
-
-The with-B versions additionally draw the purple `B(x*)` overlay and connect circles to X-marks with horizontal grey lines.
+- **Confusing scaled and raw B values.** The purple curve plots `scale_b_to_axis(B_val, param_range)`, but the threshold condition `B(x*) = 1/(2βρ)` uses the raw `B(x*)`. Always compare raw values when detecting sign changes, then scale only for plotting.
+- **Trying to add a vertical line to β or ρ diagrams.** The threshold varies with the x-axis parameter here; a vertical line would only be correct for a single parameter value.
+- **Removing the `*_with_B.py` / `*.py` duplication.** Both suites are intentionally maintained. If one set breaks, fix it; do not consolidate.
+- **Relaxing gap thresholds.** The `> 0.2` gap checks prevent the interpolator from stitching together unrelated equilibrium branches (e.g., a high-x stable branch and a low-x unstable branch). Removing or widening this causes spurious X-marks.
+- **Using `find_turning_points` for class-II STP placement.** This function tracks branch appearances / disappearances (class-I). Class-II STPs must always be found via the B-criterion. In the μ scripts, `find_turning_points` is used only to decide which stable branch gets the thicker scatter points.
+- **Changing marker styles.** The colour and marker conventions are fixed (green stable, red unstable, purple B, black circle, black X). Altering these breaks consistency with published/combined figures.
 
 ---
 
 ## Visual Conventions
 
-- **Green (#6aa84f)**: Stable equilibria
-- **Red**: Unstable equilibria (class I STPs)
-- **Purple**: B(x*) curve
-- **Black circles (o)**: Intersection of B(x*) with threshold
-- **Black X marks**: Class II STPs (at turning points)
-- **Grey dashed lines**:
-  - Vertical: Constant threshold reference (μ, W₁)
-  - Horizontal: Connection from circle to X mark (all four parameters)
-
-Font: Arial throughout
-Title: 16pt
-Axis labels: 13pt
-Ticks: 12pt
-Legend: 13-14pt
+| Element | Style |
+| --------- | ------- |
+| Stable equilibria | Green (`#6aa84f`) |
+| Unstable equilibria (class I STPs) | Red |
+| B(x*) curve | Purple |
+| B/threshold intersection | Black circle (`ko`, open) |
+| Class II STP exact location | Black X (`kx`) |
+| Horizontal connector | Grey dashed line |
+| Vertical threshold reference | Grey dashed line (μ, W₁ only) |
+| Font | Arial |
+| Title | 16 pt |
+| Axis labels | 13 pt |
+| Ticks | 12 pt |
+| Legend | 13–14 pt |
